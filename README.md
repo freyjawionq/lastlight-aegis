@@ -4,8 +4,8 @@ An original neon arena-defense game for make.fun's **best-game-01** ("Make the b
 
 The last star in the dark still burns, and the void is coming for it. You are its
 guardian: a lone light-ship holding orbit while wave after wave of void-spawn —
-shards, darters, weavers, splitters and bulwarks — spiral in to drink the core.
-Survive ten waves and break the Void Herald, or the light goes out.
+shards, darters, weavers, splitters, lancers and bulwarks — spiral in to drink
+the core. Survive ten waves and break the Void Herald, or the light goes out.
 
 ## Play
 
@@ -24,10 +24,11 @@ node serve.ts          # then open http://localhost:8080
 | Nova bomb (clears the sky) | Right-click / E |
 | Pause / mute | P / M |
 
-Chain kills to raise the combo multiplier, catch repair, overdrive, nova and
-aegis pickups, and choose — every second — between hunting the swarm and
-guarding the core. Clearing wave 10 wins the game; an endless night follows
-for score.
+Chain kills to raise the combo multiplier — milestones flare as STARFIRE,
+SUPERNOVA and LASTLIGHT — catch repair, overdrive, scatter-cannon, nova and
+aegis pickups, dodge the lancer's telegraphed spear-charge, and weather the
+mid-wave VOID SURGE when the dark doubles its hunger. Clearing wave 10 wins
+the game; an endless night follows for score.
 
 ## Layout
 

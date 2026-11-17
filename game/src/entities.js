@@ -3,7 +3,7 @@
 // fallen drop. Each class owns its own update and draw; the Game
 // class only orchestrates collisions and scoring.
 
-import { ENEMY_TYPES, PALETTE, PLAYER, PICKUP_KINDS, VIEW, clamp } from './config.js';
+import { ENEMY_TYPES, LANCER, PALETTE, PLAYER, PICKUP_KINDS, VIEW, clamp } from './config.js';
 import { drawGlow, drawOrb } from './sprites.js';
 
 export class Player {
@@ -178,9 +178,12 @@ export class Bullet {
     this.life = PLAYER.bulletLife;
     this.radius = 4;
     this.dead = false;
+    this.trail = []; // recent positions, drawn as a fading comet tail
   }
 
   update(dt) {
+    this.trail.unshift({ x: this.x, y: this.y });
+    if (this.trail.length > 5) this.trail.pop();
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
@@ -190,15 +193,22 @@ export class Bullet {
   }
 
   draw(ctx) {
-    const backX = this.x - this.vx * 0.016;
-    const backY = this.y - this.vy * 0.016;
-    ctx.strokeStyle = PALETTE.guardian;
-    ctx.lineWidth = 3;
+    // Comet tail: a tapering polyline through the last few positions.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(backX, backY);
-    ctx.lineTo(this.x, this.y);
-    ctx.stroke();
+    for (let i = this.trail.length - 1; i >= 0; i--) {
+      const point = this.trail[i];
+      const t = 1 - i / Math.max(1, this.trail.length);
+      ctx.strokeStyle = PALETTE.guardian;
+      ctx.globalAlpha = 0.14 + t * 0.3;
+      ctx.lineWidth = 1 + t * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+      ctx.lineTo(this.x, this.y);
+      ctx.stroke();
+    }
+    ctx.restore();
     drawOrb(ctx, PALETTE.guardian, this.x, this.y, 2.6);
   }
 }
@@ -249,6 +259,14 @@ export class Enemy {
     this.fireTimer = 2 + rng() * 2.5; // Herald orb cadence
     this.spawnTimer = 3.5; // Herald shard cadence
     this.orbitDir = rng() < 0.5 ? 1 : -1;
+    // Lancer charge-cycle state (only the lancer family uses it).
+    this.mode = 'stalk';
+    this.modeTimer = 0;
+    this.lockTimer = 0; // cooldown before the next lock-on
+    this.chargeDirX = 0;
+    this.chargeDirY = 0;
+    this.lockX = 0; // the point the telegraph line is drawn toward
+    this.lockY = 0;
     this.dead = false;
     this.reachedCore = false;
   }
@@ -262,9 +280,65 @@ export class Enemy {
     return game.core; // 'core' and 'orbit' both home on the star
   }
 
+  // The lancer's hunt, in four beats: stalk the guardian, lock on
+  // with a flashing telegraph the player can read and dodge, spear
+  // straight through the locked line, then drift while it recovers.
+  updateLancer(dt, game) {
+    const speedScale = game.slowmo > 0 ? 0.45 : 1;
+    const player = game.player;
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    this.lockTimer = Math.max(0, this.lockTimer - dt);
+
+    if (this.mode === 'stalk') {
+      this.vx = (dx / dist) * this.def.speed * speedScale;
+      this.vy = (dy / dist) * this.def.speed * speedScale;
+      if (dist < LANCER.stalkRange && this.lockTimer <= 0) {
+        this.mode = 'telegraph';
+        this.modeTimer = LANCER.telegraphTime;
+      }
+    } else if (this.mode === 'telegraph') {
+      // It hangs almost still, shivering, while the lock line tracks
+      // the guardian — the dodge window is the whole point.
+      this.vx *= 0.8;
+      this.vy *= 0.8;
+      this.lockX = player.x;
+      this.lockY = player.y;
+      this.modeTimer -= dt;
+      if (this.modeTimer <= 0) {
+        this.chargeDirX = dx / dist;
+        this.chargeDirY = dy / dist;
+        this.mode = 'charge';
+        this.modeTimer = LANCER.chargeTime;
+      }
+    } else if (this.mode === 'charge') {
+      this.vx = this.chargeDirX * LANCER.chargeSpeed * speedScale;
+      this.vy = this.chargeDirY * LANCER.chargeSpeed * speedScale;
+      this.modeTimer -= dt;
+      if (this.modeTimer <= 0) {
+        this.mode = 'recover';
+        this.modeTimer = LANCER.recoverTime;
+        this.lockTimer = LANCER.lockCooldown;
+      }
+    } else {
+      // Recover: a slow drift on its last heading while vulnerable.
+      this.vx *= Math.max(0, 1 - 2.4 * dt);
+      this.vy *= Math.max(0, 1 - 2.4 * dt);
+      this.modeTimer -= dt;
+      if (this.modeTimer <= 0) this.mode = 'stalk';
+    }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+  }
+
   update(dt, game, time) {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
     this.rotation += this.spin * dt;
+    if (this.type === 'lancer') {
+      this.updateLancer(dt, game);
+      return;
+    }
     const target = this.targetFor(game);
     const dx = target.x - this.x;
     const dy = target.y - this.y;
@@ -317,11 +391,31 @@ export class Enemy {
 
   draw(ctx, time) {
     const { color } = this.def;
+    // The lancer's telegraph: a dashed magenta lock line to the
+    // guardian, drawn under everything else so it reads as a warning.
+    if (this.type === 'lancer' && this.mode === 'telegraph') {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.35 + 0.3 * Math.sin(time * 26);
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([9, 7]);
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y);
+      ctx.lineTo(this.lockX, this.lockY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
     drawGlow(ctx, color, this.x, this.y, this.radius * 4.6, 0.4);
     ctx.save();
     ctx.translate(this.x, this.y);
-    ctx.rotate(this.type === 'herald' || this.type === 'bulwark' ? this.rotation : Math.atan2(this.vy, this.vx));
-    const flash = this.hitFlash > 0;
+    let facing;
+    if (this.type === 'herald' || this.type === 'bulwark') facing = this.rotation;
+    else if (this.type === 'lancer' && this.mode === 'telegraph') facing = Math.atan2(this.lockY - this.y, this.lockX - this.x);
+    else if (this.type === 'lancer' && this.mode === 'charge') facing = Math.atan2(this.chargeDirY, this.chargeDirX);
+    else facing = Math.atan2(this.vy, this.vx);
+    ctx.rotate(facing);
+    const flash = this.hitFlash > 0 || (this.type === 'lancer' && this.mode === 'telegraph' && Math.sin(time * 30) > 0.2);
     ctx.fillStyle = flash ? '#ffffff' : color;
     ctx.strokeStyle = 'rgba(255,255,255,0.75)';
     ctx.lineWidth = 1.2;
@@ -340,6 +434,16 @@ export class Enemy {
       ctx.lineTo(-r, -r * 0.55);
       ctx.lineTo(-r * 0.55, 0);
       ctx.lineTo(-r, r * 0.55);
+      ctx.closePath();
+    } else if (this.type === 'lancer') {
+      // A long spearhead with swept fins; mid-charge it stretches.
+      const stretch = this.mode === 'charge' ? 1.45 : 1;
+      ctx.moveTo(r * 1.9 * stretch, 0);
+      ctx.lineTo(r * 0.2, -r * 0.42);
+      ctx.lineTo(-r * 0.9, -r * 0.95);
+      ctx.lineTo(-r * 0.45, 0);
+      ctx.lineTo(-r * 0.9, r * 0.95);
+      ctx.lineTo(r * 0.2, r * 0.42);
       ctx.closePath();
     } else if (this.type === 'weaver') {
       // Diamond with a hollow heart.
@@ -469,6 +573,20 @@ export class Pickup {
       ctx.lineTo(1, -2);
       ctx.closePath();
       ctx.fill();
+    } else if (this.kind === 'scatter') {
+      // A three-pronged fan: the cannon's spread, drawn as its icon.
+      for (const a of [-0.5, 0, 0.5]) {
+        const tipX = this.x + Math.sin(a) * 10;
+        const tipY = y - Math.cos(a) * 10;
+        ctx.beginPath();
+        ctx.moveTo(this.x, y + 6);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(tipX, tipY, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (this.kind === 'nova') {
       ctx.beginPath();
       for (let i = 0; i < 8; i++) {

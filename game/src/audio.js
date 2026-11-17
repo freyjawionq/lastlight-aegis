@@ -160,6 +160,20 @@ export class SoundEngine {
     }
   }
 
+  // Two rising alarm notes when a void surge breaks mid-wave.
+  surge() {
+    this.tone({ type: 'square', from: 520, to: 780, duration: 0.14, volume: 0.1 });
+    this.tone({ type: 'square', from: 520, to: 780, duration: 0.14, volume: 0.1, delay: 0.18 });
+  }
+
+  // A short bright arpeggio when the combo multiplier steps up.
+  milestone() {
+    const notes = [660, 880, 1320];
+    notes.forEach((frequency, i) => {
+      this.tone({ type: 'sine', from: frequency, duration: 0.12, volume: 0.1, delay: i * 0.05 });
+    });
+  }
+
   victory() {
     const notes = [392, 494, 587, 784, 587, 784];
     notes.forEach((frequency, i) => {

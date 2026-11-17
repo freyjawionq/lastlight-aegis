@@ -7,7 +7,7 @@
 // After staging, the simulation freezes on the composed frame.
 
 import { VIEW, createRng } from './config.js';
-import { Enemy } from './entities.js';
+import { Enemy, Pickup } from './entities.js';
 
 const STEP = 1 / 60;
 
@@ -55,6 +55,18 @@ function runSteps(game, steps, pilot = false) {
   game.input.keys.clear();
 }
 
+// A lancer caught mid-telegraph, its dashed lock line drawn on the
+// guardian: placed after the staged seconds so the composed frame
+// keeps the warning exactly as a player would read it.
+function placeTelegraphingLancer(game, x, y) {
+  const lancer = place(game, 'lancer', x, y);
+  lancer.mode = 'telegraph';
+  lancer.modeTimer = 0.5;
+  lancer.lockX = game.player.x;
+  lancer.lockY = game.player.y;
+  return lancer;
+}
+
 function stageTitle(game) {
   game.state = 'title';
   runSteps(game, 240); // let the attract orbit and drifting shards settle
@@ -76,6 +88,7 @@ function stageBattle(game, seed) {
   game.comboTimer = 2.4;
   game.bombs = 2;
   game.overdriveT = 5.5;
+  game.scatterT = 6.5; // the fan cannon is live: HUD line and bolt fan
   game.stats.kills = 96;
   game.stats.shots = 402;
   game.stats.hits = 301;
@@ -89,11 +102,16 @@ function stageBattle(game, seed) {
   place(game, 'weaver', 150, 430);
   place(game, 'splitter', 1010, 120);
   place(game, 'bulwark', 880, 620);
+  place(game, 'lancer', 560, 210);
+  game.pickups.push(new Pickup('scatter', 742, 618));
+  game.pickups.push(new Pickup('repair', 262, 318));
   game.player.invulnerable = 999; // the stand-in pilot must survive its own scene
   runSteps(game, 150, true);
   game.player.invulnerable = 0;
   game.player.hull = 76;
   game.core.hp = 212;
+  game.scatterT = 6;
+  placeTelegraphingLancer(game, 935, 415);
   game.banner = null;
 }
 
@@ -111,6 +129,8 @@ function stageBoss(game) {
   place(game, 'mini', 700, 300);
   place(game, 'mini', 830, 290);
   place(game, 'darter', 1050, 430);
+  place(game, 'lancer', 330, 560);
+  game.pickups.push(new Pickup('aegis', 452, 196));
   game.player.x = 548;
   game.player.y = 606;
   game.player.hull = 58;
@@ -119,6 +139,7 @@ function stageBoss(game) {
   game.combo = 34;
   game.comboTimer = 2.6;
   game.bombs = 1;
+  game.scatterT = 5;
   game.stats.kills = 178;
   game.stats.shots = 655;
   game.stats.hits = 470;
@@ -128,6 +149,8 @@ function stageBoss(game) {
   game.player.invulnerable = 0;
   game.player.hull = 58;
   game.core.hp = 164;
+  game.scatterT = 5;
+  placeTelegraphingLancer(game, 985, 585);
   herald.hp = 96; // the boss health arc reads mid-fight
   // Set the banner after the sim: its fade is driven by time left.
   game.showBanner('THE VOID HERALD', 'Break the Herald and the night ends', 2.3);
@@ -136,6 +159,7 @@ function stageBoss(game) {
 function stageVictory(game) {
   game.resetRun();
   game.state = 'victory';
+  game.newBest = true; // a first clear in a fresh profile is a best
   game.score = 31420;
   game.core.hp = 96;
   game.stats.kills = 212;

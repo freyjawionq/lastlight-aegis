@@ -19,7 +19,9 @@ export class ParticleSystem {
     this.particles.push(particle);
   }
 
-  // A burst of coloured sparks flying outward with drag.
+  // A burst of coloured sparks flying outward with drag. A third of
+  // the burst is tumbling debris — jagged shards that spin as they
+  // fly — and a few slow embers that hang in the dark after the flash.
   explosion(x, y, color, count = 22, power = 260) {
     for (let i = 0; i < count; i++) {
       const angle = this.rng() * Math.PI * 2;
@@ -35,8 +37,58 @@ export class ParticleSystem {
         color,
         drag: 3.2,
       });
+      if (i % 3 === 0) {
+        const shardLife = 0.5 + this.rng() * 0.6;
+        this.spawnParticle({
+          kind: 'shard',
+          x, y,
+          vx: Math.cos(angle) * speed * 0.7,
+          vy: Math.sin(angle) * speed * 0.7,
+          life: shardLife, maxLife: shardLife,
+          size: 3 + this.rng() * 5,
+          color,
+          drag: 2.2,
+          rotation: this.rng() * Math.PI * 2,
+          spin: (this.rng() - 0.5) * 14,
+        });
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      const angle = this.rng() * Math.PI * 2;
+      const drift = 20 + this.rng() * 50;
+      const life = 0.9 + this.rng() * 0.9;
+      this.spawnParticle({
+        kind: 'spark',
+        x, y,
+        vx: Math.cos(angle) * drift,
+        vy: Math.sin(angle) * drift - 24,
+        life, maxLife: life,
+        size: 1.4 + this.rng() * 1.4,
+        color: '#ffd9a0',
+        drag: 0.7,
+      });
     }
     this.ring(x, y, color, 90, 0.45);
+  }
+
+  // A directional cone of sparks where a bolt bites: the spray leans
+  // away from the impact along the bolt's own line of travel.
+  impact(x, y, angle, color) {
+    for (let i = 0; i < 6; i++) {
+      const spread = (this.rng() - 0.5) * 1.5;
+      const speed = 120 + this.rng() * 240;
+      const life = 0.16 + this.rng() * 0.22;
+      this.spawnParticle({
+        kind: 'spark',
+        x, y,
+        vx: Math.cos(angle + spread) * speed,
+        vy: Math.sin(angle + spread) * speed,
+        life, maxLife: life,
+        size: 1.3 + this.rng() * 1.8,
+        color,
+        drag: 3.6,
+      });
+    }
   }
 
   // Short-lived streaks behind the guardian's engines and dash.
@@ -100,6 +152,7 @@ export class ParticleSystem {
       p.vx *= dragFactor;
       p.vy *= dragFactor;
       if (p.gravity) p.vy += p.gravity * dt;
+      if (p.spin) p.rotation += p.spin * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       alive.push(p);
@@ -125,6 +178,21 @@ export class ParticleSystem {
       const t = p.life / p.maxLife;
       if (p.kind === 'puff') {
         drawGlow(ctx, p.color, p.x, p.y, p.size * (1.6 - t * 0.6), 0.35 * t);
+      } else if (p.kind === 'shard') {
+        // A tumbling triangle of wreckage, fading as it spins out.
+        ctx.globalAlpha = Math.min(1, t * 1.8);
+        ctx.fillStyle = p.color;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation || 0);
+        const s = p.size * (0.5 + t * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(s, 0);
+        ctx.lineTo(-s * 0.7, -s * 0.6);
+        ctx.lineTo(-s * 0.3, s * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
       } else {
         ctx.globalAlpha = Math.min(1, t * 1.6);
         ctx.fillStyle = p.color;
@@ -150,6 +218,14 @@ export class ParticleSystem {
       const t = floater.life / floater.maxLife;
       ctx.globalAlpha = Math.min(1, t * 2);
       ctx.font = `700 ${floater.size}px "Segoe UI", system-ui, sans-serif`;
+      // Big announcements (combo milestones) carry their own glow so
+      // they read as events, not as score bookkeeping.
+      if (floater.size >= 22) {
+        ctx.shadowColor = floater.color;
+        ctx.shadowBlur = 16;
+      } else {
+        ctx.shadowBlur = 0;
+      }
       ctx.fillStyle = floater.color;
       ctx.fillText(floater.value, floater.x, floater.y);
     }

@@ -72,11 +72,17 @@ export class Game {
     this.comboTimer = 0;
     this.bombs = PLAYER.startBombs;
     this.overdriveT = 0;
+    this.scatterT = 0;
+    this.hitstop = 0; // brief freeze frames on heavy kills
+    this.coreFlash = 0; // red pulse on the core when it takes a hit
     this.slowmo = 0;
     this.shake = 0;
     this.flash = 0;
     this.phase = 'combat';
     this.intermission = 0;
+    this.waveTotal = 0;
+    this.surgeDone = true; // armed per wave in startWave
+    this.newBest = false;
     this.banner = null;
     this.gameOverCause = '';
     this.stats = { kills: 0, shots: 0, hits: 0, timePlayed: 0, wavesCleared: 0 };
@@ -96,6 +102,8 @@ export class Game {
   startWave(wave) {
     this.director.wave = wave;
     this.director.buildWave(wave);
+    this.waveTotal = this.director.queue.length;
+    this.surgeDone = false;
     this.phase = 'combat';
     const isBoss = wave === WAVES.victoryWave;
     this.banner = {
@@ -217,11 +225,20 @@ export class Game {
       this.state = 'paused';
       return;
     }
+    // Hitstop: on a heavy kill the world holds its breath for a few
+    // frames while the particles play out — cheap, enormous feel.
+    if (this.hitstop > 0) {
+      this.hitstop -= dt;
+      this.particles.update(dt * 0.3);
+      return;
+    }
     this.stats.timePlayed += dt;
     this.slowmo = Math.max(0, this.slowmo - dt);
     this.shake = Math.max(0, this.shake - dt * 26);
     this.flash = Math.max(0, this.flash - dt * 2.4);
     this.overdriveT = Math.max(0, this.overdriveT - dt);
+    this.scatterT = Math.max(0, this.scatterT - dt);
+    this.coreFlash = Math.max(0, this.coreFlash - dt * 2.6);
     this.core.shieldT = Math.max(0, this.core.shieldT - dt);
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
@@ -234,6 +251,12 @@ export class Game {
       if (type) {
         const point = this.director.spawnPoint();
         this.enemies.push(new Enemy(type, point.x, point.y, this.rng, this.director.hpScale()));
+      }
+      // Mid-wave surge: once half the wave is dealt, the void throws
+      // a ring of shards at the star in one breath (deep waves only).
+      if (!this.surgeDone && this.waveTotal >= 12 && this.director.wave >= 4
+        && this.director.remaining <= Math.floor(this.waveTotal / 2) && this.director.remaining > 0) {
+        this.triggerSurge();
       }
       if (this.director.doneSpawning && this.enemies.length === 0) {
         this.onWaveCleared();
@@ -264,22 +287,40 @@ export class Game {
     this.orbs = this.orbs.filter((orb) => !orb.dead);
   }
 
+  // A ring of void-spawn arrives all at once from the edges — the
+  // wave's second act. They still have to be cleared to hold the wave.
+  triggerSurge() {
+    this.surgeDone = true;
+    const count = 6 + Math.min(4, this.director.wave - 4);
+    for (let i = 0; i < count; i++) {
+      const point = this.director.spawnPoint();
+      const type = i % 3 === 2 ? 'mini' : 'shard';
+      this.enemies.push(new Enemy(type, point.x, point.y, this.rng, this.director.hpScale()));
+    }
+    this.showBanner('VOID SURGE', 'The dark doubles its hunger', 1.6);
+    this.sound.surge();
+    this.shake = Math.max(this.shake, 5);
+  }
+
   updateFiring(dt) {
     const interval = this.overdriveT > 0 ? PLAYER.fireInterval * 0.45 : PLAYER.fireInterval;
     if (!this.input.mouseDown || this.player.fireTimer > 0) return;
     this.player.fireTimer = interval;
     const noseX = this.player.x + Math.cos(this.player.angle) * (PLAYER.radius + 6);
     const noseY = this.player.y + Math.sin(this.player.angle) * (PLAYER.radius + 6);
-    if (this.overdriveT > 0) {
-      // Twin parallel bolts while overdriven.
-      const perpX = -Math.sin(this.player.angle) * 6;
-      const perpY = Math.cos(this.player.angle) * 6;
-      this.bullets.push(new Bullet(noseX + perpX, noseY + perpY, this.player.angle));
-      this.bullets.push(new Bullet(noseX - perpX, noseY - perpY, this.player.angle));
-      this.stats.shots += 2;
-    } else {
-      this.bullets.push(new Bullet(noseX, noseY, this.player.angle));
-      this.stats.shots += 1;
+    // Muzzles: overdrive splits the cannon into twin parallel bolts;
+    // the scatter pickup fans every muzzle into a three-bolt spread.
+    const perpX = -Math.sin(this.player.angle);
+    const perpY = Math.cos(this.player.angle);
+    const muzzles = this.overdriveT > 0 ? [-6, 6] : [0];
+    const fan = this.scatterT > 0 ? [-0.17, 0, 0.17] : [0];
+    for (const offset of muzzles) {
+      const muzzleX = noseX + perpX * offset;
+      const muzzleY = noseY + perpY * offset;
+      for (const spread of fan) {
+        this.bullets.push(new Bullet(muzzleX, muzzleY, this.player.angle + spread));
+        this.stats.shots += 1;
+      }
     }
     this.particles.puff(noseX, noseY, PALETTE.guardian, 22, 0.16);
     this.sound.shoot();
@@ -325,6 +366,7 @@ export class Game {
   winGame() {
     this.state = 'victory';
     this.flash = 0.7;
+    this.newBest = this.score > this.hiScore;
     this.saveHiScore();
     this.sound.victory();
     this.particles.ring(VIEW.coreX, VIEW.coreY, PALETTE.core, 700, 1.1);
@@ -336,6 +378,7 @@ export class Game {
     this.gameOverCause = cause;
     this.shake = 18;
     this.flash = 0.6;
+    this.newBest = this.score > this.hiScore;
     this.saveHiScore();
     this.sound.gameOver();
     const x = cause === 'core' ? VIEW.coreX : this.player.x;
@@ -365,6 +408,7 @@ export class Game {
         enemy.hp -= 1;
         enemy.hitFlash = 0.09;
         this.particles.puff(bullet.x, bullet.y, enemy.def.color, 20, 0.18);
+        this.particles.impact(bullet.x, bullet.y, Math.atan2(bullet.vy, bullet.vx), enemy.def.color);
         if (enemy.hp <= 0) this.killEnemy(enemy);
         break;
       }
@@ -407,13 +451,31 @@ export class Game {
     const size = clamp(enemy.radius / 16, 0.7, 3);
     this.particles.explosion(enemy.x, enemy.y, enemy.def.color, Math.round(16 * size), 240 * size);
     this.sound.explosion(size * 0.7);
+    // Weight you can feel: heavies stop the world for a frame and
+    // rock the camera; even a splitter's pop nudges it.
+    if (enemy.type === 'bulwark') {
+      this.hitstop = Math.max(this.hitstop, 0.05);
+      this.shake = Math.max(this.shake, 7);
+    } else if (enemy.type === 'splitter' || enemy.type === 'lancer') {
+      this.shake = Math.max(this.shake, 3);
+    }
     if (awardScore) {
+      const multBefore = this.multiplier;
       this.combo += 1;
       this.comboTimer = COMBO.window;
       const gained = enemy.def.score * this.multiplier;
       this.score += gained;
       this.stats.kills += 1;
       if (gained >= 100) this.particles.text(enemy.x, enemy.y - 10, `+${gained}`, enemy.def.color, 16);
+      // A multiplier step is an event: name it, ring it, chime it.
+      if (this.multiplier > multBefore) {
+        const names = { 4: 'STARFIRE', 6: 'SUPERNOVA', 8: 'LASTLIGHT' };
+        const label = `${names[this.multiplier] || 'COMBO'} ×${this.multiplier}`;
+        const color = this.multiplier >= 6 ? '#ffb347' : PALETTE.guardian;
+        this.particles.text(VIEW.width / 2, 216, label, color, 30);
+        this.particles.ring(this.player.x, this.player.y, color, 90, 0.4);
+        this.sound.milestone();
+      }
     }
     if (enemy.type === 'splitter') {
       for (let i = 0; i < 3; i++) {
@@ -452,6 +514,8 @@ export class Game {
       this.core.hp = Math.min(this.core.maxHp, this.core.hp + 45);
     } else if (pickup.kind === 'overdrive') {
       this.overdriveT = 8;
+    } else if (pickup.kind === 'scatter') {
+      this.scatterT = PLAYER.scatterTime;
     } else if (pickup.kind === 'nova') {
       this.bombs = Math.min(PLAYER.maxBombs, this.bombs + 1);
     } else if (pickup.kind === 'aegis') {
@@ -473,6 +537,7 @@ export class Game {
 
   damageCore(amount, x, y) {
     this.core.hp -= amount;
+    this.coreFlash = 0.5;
     this.shake = Math.max(this.shake, 9);
     this.slowmo = Math.max(this.slowmo, 0.3);
     this.sound.coreHit();
@@ -562,6 +627,7 @@ export class Game {
       ctx.fillRect(0, 0, VIEW.width, VIEW.height);
     }
     this.drawVignette(ctx);
+    this.drawDangerVignette(ctx);
 
     if (this.state === 'playing' || this.state === 'paused') this.drawHud(ctx);
     if (this.banner && (this.state === 'playing')) this.drawBanner(ctx);
@@ -609,6 +675,23 @@ export class Game {
     ctx.arc(x, y, VIEW.coreRadius * pulse, 0, Math.PI * 2);
     ctx.fillStyle = body;
     ctx.fill();
+    // Fresh damage smoulders red over the gold before it fades.
+    if (this.coreFlash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      drawGlow(ctx, PALETTE.danger, x, y, 210, this.coreFlash * 0.55);
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(x, y, VIEW.coreRadius * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 60, 70, ${this.coreFlash * 0.35})`;
+      ctx.fill();
+    }
+    // Ember sparks ride a slow orbit just outside the corona.
+    for (let i = 0; i < 6; i++) {
+      const a = this.time * 0.85 + (i * Math.PI) / 3;
+      const orbitR = VIEW.coreRadius + 27 + Math.sin(this.time * 2.2 + i * 1.9) * 4;
+      drawOrb(ctx, PALETTE.core, x + Math.cos(a) * orbitR, y + Math.sin(a) * orbitR, 2.2, '#fff6da');
+    }
     // Health ring: gold while strong, red as the star fades.
     ctx.beginPath();
     ctx.arc(x, y, VIEW.coreRadius + 12, -Math.PI / 2, -Math.PI / 2 + hpFrac * Math.PI * 2);
@@ -704,11 +787,21 @@ export class Game {
     for (let i = 0; i < PLAYER.maxBombs; i++) {
       drawOrb(ctx, i < this.bombs ? PALETTE.guardian : 'rgba(90,120,150,0.5)', VIEW.width - 36 - i * 24, VIEW.height - 22, 6, '#ffffff');
     }
+    // Bottom-center weapon timers, stacked when both run at once.
+    let timerRow = 0;
     if (this.overdriveT > 0) {
       ctx.textAlign = 'center';
       ctx.font = `800 15px ${FONT}`;
       ctx.fillStyle = PALETTE.overdrive;
-      ctx.fillText(`OVERDRIVE ${this.overdriveT.toFixed(0)}s`, VIEW.width / 2, VIEW.height - 18);
+      ctx.fillText(`OVERDRIVE ${this.overdriveT.toFixed(0)}s`, VIEW.width / 2, VIEW.height - 18 - timerRow * 22);
+      timerRow += 1;
+    }
+    if (this.scatterT > 0) {
+      ctx.textAlign = 'center';
+      ctx.font = `800 15px ${FONT}`;
+      ctx.fillStyle = PICKUP_KINDS.scatter.color;
+      ctx.fillText(`SCATTER CANNON ${this.scatterT.toFixed(0)}s`, VIEW.width / 2, VIEW.height - 18 - timerRow * 22);
+      timerRow += 1;
     }
     if (this.sound.muted) {
       ctx.textAlign = 'right';
@@ -742,6 +835,22 @@ export class Game {
     const gradient = ctx.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.42, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.95);
     gradient.addColorStop(0, 'rgba(0,0,0,0)');
     gradient.addColorStop(1, 'rgba(2,4,12,0.55)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+  }
+
+  // When the hull or the star is nearly gone, the edges of the
+  // world pulse red — danger you feel before you read the bars.
+  drawDangerVignette(ctx) {
+    if (this.state !== 'playing' && this.state !== 'paused') return;
+    const hullDanger = clamp(1 - this.player.hull / 30, 0, 1);
+    const coreDanger = clamp(1 - this.core.hp / (this.core.maxHp * 0.3), 0, 1);
+    const danger = Math.max(hullDanger, coreDanger);
+    if (danger <= 0) return;
+    const pulse = (0.13 + 0.09 * Math.sin(this.time * 6)) * danger;
+    const gradient = ctx.createRadialGradient(VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.36, VIEW.width / 2, VIEW.height / 2, VIEW.height * 0.92);
+    gradient.addColorStop(0, 'rgba(255,40,60,0)');
+    gradient.addColorStop(1, `rgba(255, 40, 60, ${pulse})`);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, VIEW.width, VIEW.height);
   }
@@ -880,6 +989,11 @@ export class Game {
     ctx.font = `600 16px ${FONT}`;
     ctx.fillStyle = PALETTE.text;
     ctx.fillText('The Herald is broken and the last star still burns — because you held.', VIEW.width / 2, 266);
+    if (this.newBest) {
+      ctx.font = `800 15px ${FONT}`;
+      ctx.fillStyle = PALETTE.core;
+      ctx.fillText('★ NEW BEST ★', VIEW.width / 2, 292);
+    }
     this.drawStats(ctx, 314);
     for (const button of this.menuButtons()) this.drawButton(ctx, button);
     ctx.font = `500 13px ${FONT}`;
@@ -902,6 +1016,11 @@ export class Game {
       ? 'The void reached the star core and drank it dark.'
       : 'Your guardian broke apart among the shards.';
     ctx.fillText(cause, VIEW.width / 2, 286);
+    if (this.newBest) {
+      ctx.font = `800 15px ${FONT}`;
+      ctx.fillStyle = PALETTE.core;
+      ctx.fillText('★ NEW BEST ★', VIEW.width / 2, 312);
+    }
     this.drawStats(ctx, 330);
     for (const button of this.menuButtons()) this.drawButton(ctx, button);
   }

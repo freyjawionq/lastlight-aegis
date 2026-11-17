@@ -25,6 +25,18 @@ export const PLAYER = {
   dashCooldown: 1.6,
   startBombs: 2,
   maxBombs: 3,
+  scatterTime: 10, // seconds of three-bolt fan fire per scatter pickup
+};
+
+// The lancer's charge cycle: it stalks the guardian, locks on with a
+// visible telegraph, then spears across the arena in a straight line.
+export const LANCER = {
+  stalkRange: 340, // distance at which it begins a lock-on
+  telegraphTime: 0.65,
+  chargeSpeed: 575,
+  chargeTime: 0.46,
+  recoverTime: 0.85,
+  lockCooldown: 1.5,
 };
 
 export const CORE = {
@@ -87,6 +99,10 @@ export const ENEMY_TYPES = {
     hp: 5, speed: 54, radius: 21, score: 150, coreDamage: 12, hullDamage: 14,
     color: '#7dff8a', seek: 'core', wobble: 0.4,
   },
+  lancer: {
+    hp: 3, speed: 92, radius: 13, score: 150, coreDamage: 10, hullDamage: 16,
+    color: '#ff5df2', seek: 'player', wobble: 0.8,
+  },
   mini: {
     hp: 1, speed: 118, radius: 8, score: 25, coreDamage: 4, hullDamage: 5,
     color: '#b6ff9e', seek: 'core', wobble: 1.4,
@@ -104,6 +120,7 @@ export const ENEMY_TYPES = {
 export const PICKUP_KINDS = {
   repair: { color: '#7dffce', weight: 40, label: 'REPAIR' },
   overdrive: { color: '#ffb347', weight: 25, label: 'OVERDRIVE' },
+  scatter: { color: '#ffe14d', weight: 20, label: 'SCATTER CANNON' },
   nova: { color: '#5ff2ff', weight: 20, label: 'NOVA +1' },
   aegis: { color: '#ffd76a', weight: 15, label: 'AEGIS SHIELD' },
 };

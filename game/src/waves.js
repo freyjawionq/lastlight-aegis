@@ -24,11 +24,13 @@ export class WaveDirector {
     add('shard', 5 + wave * 2);
     if (wave >= 2) add('darter', 1 + wave);
     if (wave >= 3) add('weaver', wave - 1);
+    if (wave >= 3) add('lancer', Math.min(5, wave - 2));
     if (wave >= 4) add('splitter', wave - 3);
     if (wave >= 5) add('bulwark', Math.floor((wave - 2) / 2));
     if (wave > WAVES.victoryWave) {
       add('shard', wave - WAVES.victoryWave);
       add('darter', Math.floor((wave - WAVES.victoryWave) / 2));
+      add('lancer', 2);
       add('bulwark', 1);
     }
     // Shuffle so families interleave instead of arriving in blocks.
