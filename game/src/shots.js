@@ -121,6 +121,9 @@ function stageBoss(game) {
   game.director.wave = 10;
   game.director.buildWave(10);
   game.director.queue = game.director.queue.slice(0, 4);
+  // The queue's first slot is the Herald itself; the staged Herald
+  // below is the only one this scene fields.
+  game.director.queue = game.director.queue.filter((type) => type !== 'herald');
   game.enemies = game.enemies.filter(() => false);
   const herald = place(game, 'herald', 768, 205);
   herald.hp = 102;
@@ -151,6 +154,10 @@ function stageBoss(game) {
   game.core.hp = 164;
   game.scatterT = 5;
   placeTelegraphingLancer(game, 985, 585);
+  // The Herald orbited during the staged seconds; compose it clear
+  // of the banner for the frozen frame.
+  herald.x = 852;
+  herald.y = 322;
   herald.hp = 96; // the boss health arc reads mid-fight
   // Set the banner after the sim: its fade is driven by time left.
   game.showBanner('THE VOID HERALD', 'Break the Herald and the night ends', 2.3);
