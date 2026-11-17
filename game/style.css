@@ -1,0 +1,50 @@
+/* Lastlight Aegis — page shell styling. The game itself is all
+   canvas; this only frames it: a dark room, a glowing screen. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #02040c;
+  min-height: 100%;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(1200px 700px at 50% 38%, #0a1230 0%, #02040c 70%);
+}
+
+.stage {
+  text-align: center;
+  padding: 18px 10px 10px;
+}
+
+canvas#game {
+  width: min(97vw, 1280px);
+  height: auto;
+  aspect-ratio: 1280 / 800;
+  display: block;
+  margin: 0 auto;
+  border: 1px solid rgba(120, 200, 255, 0.35);
+  border-radius: 6px;
+  box-shadow:
+    0 0 42px rgba(64, 160, 255, 0.22),
+    0 0 120px rgba(255, 183, 77, 0.10);
+  background: #050914;
+  cursor: crosshair;
+}
+
+.hint {
+  margin: 12px 0 4px;
+  color: #5f7fa3;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
