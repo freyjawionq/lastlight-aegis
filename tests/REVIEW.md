@@ -70,3 +70,28 @@ Results:
 What this does **not** show: any official make.fun score change.
 The entry's scored submission is untouched; this commit is a repo
 improvement backed by the tests above, nothing more.
+
+
+## Follow-up: moving-target collision — 2026-11-18
+
+### Defect reproduced against baseline `1b4870b1e5b03cc4dd59e734a6d89471919f3361`
+
+The swept collision added in the prior fix moved only the bolt along its frame segment and treated each enemy as stationary at its **end-of-frame** position. Enemies also move during the same capped `dt=0.05 s` step, so a mini can cross the bolt's collision corridor and end outside it. A mini moves at 118 px/s (up to 5.9 px per capped step); the bolt moves 38 px; their combined collision reach is 12 px.
+
+Deterministic reproduction: a mini starts at `(108, 110.5)` and updates toward the core to `(112.709, 114.055)` while the bolt travels from `(100, 100)` toward `(138, 100)`. The baseline sweep against the mini's final position misses (vertical gap 14.055 px > 12 px), while the relative-motion sweep hits at `t=0.082843`. The real integration test runs both `Enemy.update` and `Bullet.update`, then calls `Game.resolveCollisions`.
+
+### Focused fix
+
+`Enemy` now stores `prevX/prevY` immediately before each update. Collision sweeps the segment of `bolt position - enemy position` against a radius-`bolt+enemy` circle at the origin; the bounding-box quick reject is performed in that same relative coordinate space. Earliest-contact selection, damage, scoring, and impact placement remain unchanged.
+
+### Verification
+
+- `node --test tests/collision.test.mjs`: **10 pass / 0 fail** (the previous nine collision tests plus the moving-mini regression).
+- `node tests/demo-moving-target-baseline-vs-candidate.mjs`: baseline **MISS**, relative-motion candidate **HIT at t=0.082843**, integration records exactly one hit and kills the mini.
+- `node --check` over all `game/src/*.js` and `tests/*.mjs`: passed.
+- No Make.fun entry was accessed or changed; no payment was made.
+
+Commit and independent review status will be recorded after the push under the current one-editor lock.
+
+
+Additional headless full-loop smoke after the follow-up fix (throwaway Node harness, no rendering): 1,800 frames at `dt=1/60` completed with 200 shots / 8 hits / 3 kills; 600 frames at `dt=0.05` completed with 200 shots / 3 hits / 2 kills. Both runs remained in wave 2 without exceptions, and hits never exceeded shots.

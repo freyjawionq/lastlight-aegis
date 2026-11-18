@@ -169,3 +169,34 @@ test('integration: a clean miss stays a miss', () => {
   assert.equal(bullet.dead, false);
   assert.equal(game.stats.hits, 0);
 });
+
+test('integration: a moving mini crossing the bolt path is hit', () => {
+  const game = makeGame();
+  const enemy = miniAt(108, 110.5);
+  const bullet = new Bullet(100, 100, 0);
+  enemy.update(0.05, game, 0);
+  bullet.update(0.05);
+
+  // Baseline at 1b4870b swept the bolt against the enemy's final
+  // position as if the target had stood still; its 14.05 px offset
+  // exceeds the 12 px combined reach, so it misses this real crossing.
+  const baselineT = sweptSegmentCircle(
+    bullet.prevX, bullet.prevY, bullet.x, bullet.y,
+    enemy.x, enemy.y, bullet.radius + enemy.radius,
+  );
+  assert.equal(baselineT, null);
+  const candidateT = sweptSegmentCircle(
+    bullet.prevX - enemy.prevX, bullet.prevY - enemy.prevY,
+    bullet.x - enemy.x, bullet.y - enemy.y,
+    0, 0, bullet.radius + enemy.radius,
+  );
+  assert.notEqual(candidateT, null);
+
+  game.bullets = [bullet];
+  game.enemies = [enemy];
+  game.resolveCollisions();
+  assert.equal(enemy.dead, true);
+  assert.equal(bullet.dead, true);
+  assert.equal(game.stats.hits, 1);
+  assert.ok(bullet.x > bullet.prevX && bullet.x < bullet.x + (bullet.vx * 0.05));
+});

@@ -278,6 +278,8 @@ export class Enemy {
     this.def = def;
     this.x = x;
     this.y = y;
+    this.prevX = x;
+    this.prevY = y;
     this.vx = 0;
     this.vy = 0;
     this.hp = Math.max(1, Math.round(def.hp * hpScale));
@@ -366,6 +368,8 @@ export class Enemy {
   update(dt, game, time) {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
     this.rotation += this.spin * dt;
+    this.prevX = this.x;
+    this.prevY = this.y;
     if (this.type === 'lancer') {
       this.updateLancer(dt, game);
       return;

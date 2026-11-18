@@ -396,24 +396,23 @@ export class Game {
   // ---- collisions ---------------------------------------------------
 
   resolveCollisions() {
-    // Bolts versus void-spawn. A bolt travels up to 38 px in one step
-    // (760 px/s at the 0.05 s dt cap) — more than the combined
-    // diameter of the smallest void-spawn (bolt 4 + mini 8, doubled)
-    // — so testing only the endpoint lets a bolt tunnel clean through
-    // a target it crossed mid-step. Sweep the segment from the bolt's
-    // previous position to its new one instead, and take the earliest
-    // contact along it: that is the enemy the bolt really meets first.
+    // Bolts versus void-spawn. Sweep relative motion (bolt minus enemy)
+    // so a fast bolt cannot tunnel past a small target, and a moving
+    // target cannot cross the bolt path between frames unnoticed.
     for (const bullet of this.bullets) {
       let hitEnemy = null;
       let hitT = Infinity;
       for (const enemy of this.enemies) {
         if (enemy.dead) continue;
         const reach = bullet.radius + enemy.radius;
-        // Cheap reject: the enemy must come within reach of the
-        // segment's bounding box before the exact test is worth it.
-        if (Math.max(bullet.prevX, bullet.x) < enemy.x - reach || Math.min(bullet.prevX, bullet.x) > enemy.x + reach) continue;
-        if (Math.max(bullet.prevY, bullet.y) < enemy.y - reach || Math.min(bullet.prevY, bullet.y) > enemy.y + reach) continue;
-        const t = sweptSegmentCircle(bullet.prevX, bullet.prevY, bullet.x, bullet.y, enemy.x, enemy.y, reach);
+        const relPrevX = bullet.prevX - enemy.prevX;
+        const relPrevY = bullet.prevY - enemy.prevY;
+        const relX = bullet.x - enemy.x;
+        const relY = bullet.y - enemy.y;
+        // Cheap reject in relative space before the exact circle sweep.
+        if (Math.max(relPrevX, relX) < -reach || Math.min(relPrevX, relX) > reach) continue;
+        if (Math.max(relPrevY, relY) < -reach || Math.min(relPrevY, relY) > reach) continue;
+        const t = sweptSegmentCircle(relPrevX, relPrevY, relX, relY, 0, 0, reach);
         if (t !== null && t < hitT) {
           hitT = t;
           hitEnemy = enemy;
