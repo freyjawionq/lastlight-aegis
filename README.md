@@ -43,6 +43,9 @@ the game; an endless night follows for score.
   - `game/src/shots.js` — staged scenes used to take the screenshots
 - `screenshots/` — real renders of the game, taken from the staged scenes
   (`?shot=title|battle|boss|victory&seed=1`)
+- `tests/` — headless regression tests for the swept bullet collision
+  (`node --test tests/collision.test.mjs`), a baseline-vs-candidate demo,
+  and the review/evidence log for that change (`tests/REVIEW.md`)
 - `main.ts` — the hand-in program: copies `game/` and `screenshots/` to the
   output directory and writes `dossier.json` via `vendor/makefun-game.ts`
 - `vendor/makefun-game.ts` — the kit's dossier library, unchanged

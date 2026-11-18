@@ -169,10 +169,39 @@ export class Player {
   }
 }
 
+// Earliest contact between a swept point and a circle, or null.
+//
+// The point travels the segment (x0, y0) -> (x1, y1); the target is a
+// circle at (cx, cy) already expanded by the point's own radius
+// (reach = bullet radius + enemy radius, a Minkowski sum), which
+// reduces the bolt to its centre. Returns the segment parameter t in
+// [0, 1] of first contact — 0 when the segment starts already inside
+// the reach — or null when the segment never comes within reach.
+export function sweptSegmentCircle(x0, y0, x1, y1, cx, cy, reach) {
+  const fx = x0 - cx;
+  const fy = y0 - cy;
+  const startDist2 = fx * fx + fy * fy;
+  if (startDist2 <= reach * reach) return 0; // already touching at step start
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const a = dx * dx + dy * dy;
+  if (a === 0) return null; // no motion this step, and not touching
+  const b = 2 * (fx * dx + fy * dy);
+  const c = startDist2 - reach * reach;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null; // the swept line misses the circle entirely
+  const t = (-b - Math.sqrt(disc)) / (2 * a);
+  return t >= 0 && t <= 1 ? t : null;
+}
+
 export class Bullet {
   constructor(x, y, angle) {
     this.x = x;
     this.y = y;
+    // Where this step started; collisions sweep prev -> current so a
+    // fast bolt cannot tunnel through a small target between frames.
+    this.prevX = x;
+    this.prevY = y;
     this.vx = Math.cos(angle) * PLAYER.bulletSpeed;
     this.vy = Math.sin(angle) * PLAYER.bulletSpeed;
     this.life = PLAYER.bulletLife;
@@ -182,6 +211,8 @@ export class Bullet {
   }
 
   update(dt) {
+    this.prevX = this.x;
+    this.prevY = this.y;
     this.trail.unshift({ x: this.x, y: this.y });
     if (this.trail.length > 5) this.trail.pop();
     this.x += this.vx * dt;

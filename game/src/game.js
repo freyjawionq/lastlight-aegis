@@ -11,7 +11,7 @@ import { SoundEngine } from './audio.js';
 import { Input } from './input.js';
 import { Background } from './background.js';
 import { ParticleSystem } from './particles.js';
-import { Bullet, Enemy, EnemyOrb, Pickup, Player } from './entities.js';
+import { Bullet, Enemy, EnemyOrb, Pickup, Player, sweptSegmentCircle } from './entities.js';
 import { WaveDirector } from './waves.js';
 import { drawGlow, drawOrb } from './sprites.js';
 
@@ -396,22 +396,41 @@ export class Game {
   // ---- collisions ---------------------------------------------------
 
   resolveCollisions() {
-    // Bolts versus void-spawn.
+    // Bolts versus void-spawn. A bolt travels up to 38 px in one step
+    // (760 px/s at the 0.05 s dt cap) — more than the combined
+    // diameter of the smallest void-spawn (bolt 4 + mini 8, doubled)
+    // — so testing only the endpoint lets a bolt tunnel clean through
+    // a target it crossed mid-step. Sweep the segment from the bolt's
+    // previous position to its new one instead, and take the earliest
+    // contact along it: that is the enemy the bolt really meets first.
     for (const bullet of this.bullets) {
+      let hitEnemy = null;
+      let hitT = Infinity;
       for (const enemy of this.enemies) {
         if (enemy.dead) continue;
         const reach = bullet.radius + enemy.radius;
-        if (Math.abs(bullet.x - enemy.x) > reach || Math.abs(bullet.y - enemy.y) > reach) continue;
-        if ((bullet.x - enemy.x) ** 2 + (bullet.y - enemy.y) ** 2 > reach * reach) continue;
-        bullet.dead = true;
-        this.stats.hits += 1;
-        enemy.hp -= 1;
-        enemy.hitFlash = 0.09;
-        this.particles.puff(bullet.x, bullet.y, enemy.def.color, 20, 0.18);
-        this.particles.impact(bullet.x, bullet.y, Math.atan2(bullet.vy, bullet.vx), enemy.def.color);
-        if (enemy.hp <= 0) this.killEnemy(enemy);
-        break;
+        // Cheap reject: the enemy must come within reach of the
+        // segment's bounding box before the exact test is worth it.
+        if (Math.max(bullet.prevX, bullet.x) < enemy.x - reach || Math.min(bullet.prevX, bullet.x) > enemy.x + reach) continue;
+        if (Math.max(bullet.prevY, bullet.y) < enemy.y - reach || Math.min(bullet.prevY, bullet.y) > enemy.y + reach) continue;
+        const t = sweptSegmentCircle(bullet.prevX, bullet.prevY, bullet.x, bullet.y, enemy.x, enemy.y, reach);
+        if (t !== null && t < hitT) {
+          hitT = t;
+          hitEnemy = enemy;
+        }
       }
+      if (!hitEnemy) continue;
+      // Park the bolt at the contact point so the impact particles
+      // originate where the hit actually happened, not past the target.
+      bullet.x = bullet.prevX + (bullet.x - bullet.prevX) * hitT;
+      bullet.y = bullet.prevY + (bullet.y - bullet.prevY) * hitT;
+      bullet.dead = true;
+      this.stats.hits += 1;
+      hitEnemy.hp -= 1;
+      hitEnemy.hitFlash = 0.09;
+      this.particles.puff(bullet.x, bullet.y, hitEnemy.def.color, 20, 0.18);
+      this.particles.impact(bullet.x, bullet.y, Math.atan2(bullet.vy, bullet.vx), hitEnemy.def.color);
+      if (hitEnemy.hp <= 0) this.killEnemy(hitEnemy);
     }
     // Void-spawn versus the core and the guardian.
     for (const enemy of this.enemies) {
