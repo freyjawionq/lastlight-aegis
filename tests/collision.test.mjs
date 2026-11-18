@@ -185,12 +185,32 @@ test('integration: a moving mini crossing the bolt path is hit', () => {
     enemy.x, enemy.y, bullet.radius + enemy.radius,
   );
   assert.equal(baselineT, null);
-  const candidateT = sweptSegmentCircle(
-    bullet.prevX - enemy.prevX, bullet.prevY - enemy.prevY,
-    bullet.x - enemy.x, bullet.y - enemy.y,
-    0, 0, bullet.radius + enemy.radius,
-  );
-  assert.notEqual(candidateT, null);
+  const reach = bullet.radius + enemy.radius;
+  const bulletEndX = bullet.x;
+  const bulletEndY = bullet.y;
+  const relStartX = bullet.prevX - enemy.prevX;
+  const relStartY = bullet.prevY - enemy.prevY;
+  const relDeltaX = (bulletEndX - bullet.prevX) - (enemy.x - enemy.prevX);
+  const relDeltaY = (bulletEndY - bullet.prevY) - (enemy.y - enemy.prevY);
+  const relSpeedSq = relDeltaX ** 2 + relDeltaY ** 2;
+  assert.ok(relSpeedSq > 0);
+  const closestT = Math.max(0, Math.min(1,
+    -(relStartX * relDeltaX + relStartY * relDeltaY) / relSpeedSq,
+  ));
+  const distanceAt = (t) => Math.hypot(relStartX + relDeltaX * t, relStartY + relDeltaY * t);
+  assert.ok(distanceAt(closestT) < reach, 'the relative paths pass within the collision reach');
+
+  // Independent oracle: bisect the decreasing-distance interval from
+  // frame start to closest approach, rather than calling the production
+  // sweptSegmentCircle helper to predict the candidate contact position.
+  let outsideT = 0;
+  let insideT = closestT;
+  for (let i = 0; i < 60; i++) {
+    const midT = (outsideT + insideT) / 2;
+    if (distanceAt(midT) <= reach) insideT = midT;
+    else outsideT = midT;
+  }
+  const expectedT = (outsideT + insideT) / 2;
 
   game.bullets = [bullet];
   game.enemies = [enemy];
@@ -198,5 +218,14 @@ test('integration: a moving mini crossing the bolt path is hit', () => {
   assert.equal(enemy.dead, true);
   assert.equal(bullet.dead, true);
   assert.equal(game.stats.hits, 1);
-  assert.ok(bullet.x > bullet.prevX && bullet.x < bullet.x + (bullet.vx * 0.05));
+  const actualT = (bullet.x - bullet.prevX) / (bulletEndX - bullet.prevX);
+  assert.ok(Math.abs(actualT - expectedT) < 1e-9, `impact t=${actualT}, expected ${expectedT}`);
+  const expectedBulletX = bullet.prevX + (bulletEndX - bullet.prevX) * expectedT;
+  const expectedBulletY = bullet.prevY + (bulletEndY - bullet.prevY) * expectedT;
+  assert.ok(Math.abs(bullet.x - expectedBulletX) < 1e-9, `impact x=${bullet.x}, expected ${expectedBulletX}`);
+  assert.ok(Math.abs(bullet.y - expectedBulletY) < 1e-9, `impact y=${bullet.y}, expected ${expectedBulletY}`);
+  const miniAtImpactX = enemy.prevX + (enemy.x - enemy.prevX) * expectedT;
+  const miniAtImpactY = enemy.prevY + (enemy.y - enemy.prevY) * expectedT;
+  const contactDistance = Math.hypot(bullet.x - miniAtImpactX, bullet.y - miniAtImpactY);
+  assert.ok(Math.abs(contactDistance - reach) < 1e-9, `contact distance=${contactDistance}, reach=${reach}`);
 });

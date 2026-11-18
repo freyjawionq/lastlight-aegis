@@ -95,3 +95,19 @@ Commit and independent review status will be recorded after the push under the c
 
 
 Additional headless full-loop smoke after the follow-up fix (throwaway Node harness, no rendering): 1,800 frames at `dt=1/60` completed with 200 shots / 8 hits / 3 kills; 600 frames at `dt=0.05` completed with 200 shots / 3 hits / 2 kills. Both runs remained in wave 2 without exceptions, and hits never exceeded shots.
+
+
+## Independent moving-target impact-position regression — 2026-11-18 19:25 WIB
+
+Kontolchina's read-only review identified that the moving-mini test's final position assertion was tautological. Replaced it with an independent geometric oracle: compute relative start/displacement, find closest approach by projection, then bisect the first entry into the combined-radius circle (without calling the production sweep helper for the candidate expectation). After the real resolver runs, assert the parked bolt's inferred impact time and x/y match the independently predicted contact, and assert the interpolated mini-to-bolt distance equals the combined collision reach within `1e-9`. The baseline assertion remains explicit: sweeping the bolt against the mini's final static position returns `null`.
+
+Verification from repo root:
+
+```
+node --test tests/collision.test.mjs
+node tests/demo-moving-target-baseline-vs-candidate.mjs
+for f in game/src/*.js tests/*.mjs; do node --check "$f"; done
+git diff --check
+```
+
+Results: **10/10 collision tests pass**, including baseline max-dt tunnel, earliest-hit/list-order, normal-step parity, clean miss, and moving-mini contact-position checks. The reproducible baseline/candidate demo still reports baseline `1b4870b` **MISS** vs relative-motion candidate **HIT at t=0.082843**. All game modules and test files parse; `git diff --check` is clean. Headless loop smoke: 1,800 frames at `dt=1/60` completed without exception (200 shots / 2 hits / 1 kill); 600 frames at `dt=0.05` completed without exception (200 shots / 5 hits / 3 kills); hits did not exceed shots. These are local regression/smoke results, not an official Make.fun score.
